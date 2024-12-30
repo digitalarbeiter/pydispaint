@@ -1,7 +1,8 @@
-# pylint: disable=invalid-name,no-name-in-module
+# pylint: disable=invalid-name,no-name-in-module,import-error
 import json
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
 
 import click
@@ -225,7 +226,7 @@ class PaintRequestHandler(BaseHTTPRequestHandler):
             self.respond(400, f"unknown path: {url.path}")
 
 
-class PaintNet(HTTPServer):
+class PaintNet(ThreadingMixIn, HTTPServer):
     """ Paint Server. Manages image paint events and distributes updates
         to different clients.
     """
@@ -270,8 +271,9 @@ class PaintNet(HTTPServer):
         return self.get_updates(client)
 
     def get_updates(self, client):
+        len_painting = len(self.painting)
         start = self.client_states.get(client, 0)
-        self.client_states[client] = len(self.painting)
+        self.client_states[client] = len_painting
         return json.dumps(self.painting[start:])
 
     def exec_(self):

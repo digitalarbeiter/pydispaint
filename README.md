@@ -5,11 +5,12 @@ Distributed Paint Program
 (!) Warning (!) This is very much under development.
 
 Missing features (in order of perceived relevance):
- [ ] concurrent clients (blocked by single-threaded HTTPServer)
- [ ] some form of authentication
- [ ] saving the image (other than screenshot, that is)
- [ ] show other people's cursors
- [ ] packaging and distribution
+- [✓] concurrent clients (blocked by single-threaded HTTPServer)
+- [ ] fix re-draw issue on resize
+- [ ] some form of authentication
+- [ ] saving the image (other than screenshot, that is)
+- [ ] show other people's cursors
+- [ ] packaging and distribution
 
 
 # Installation and Start
