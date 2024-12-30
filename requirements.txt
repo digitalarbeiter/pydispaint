@@ -1,0 +1,4 @@
+click
+loguru
+PyQt5
+requests
