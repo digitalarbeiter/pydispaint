@@ -107,6 +107,7 @@ class Canvas(QWidget):
         painter.drawImage(0, 0, self.image)
         self.image = new_image
         super().resizeEvent(event)
+        self.app.update_from_beginning = True
 
     def draw_line(self, *, start_point, end_point, color, width):
         if start_point == end_point:
@@ -138,8 +139,14 @@ class Canvas(QWidget):
 
 
 class DrawingApp(QMainWindow):
+    """ The Qt app is resonsible for doing all the network stuff on
+        behalf of the canvas; for this it will be commanded by the
+        canvas to send drawing instructions over the network, as well
+        as send network updates to the canvas.
+    """
     def __init__(self, *, server, port, update_interval, color):  # pylint: disable=redefined-outer-name
         super().__init__()
+        self.update_from_beginning = False
         self.setWindowTitle("Drawing App")
         self.setGeometry(100, 100, 800, 600)
         self.canvas = Canvas(self, color)
@@ -152,6 +159,10 @@ class DrawingApp(QMainWindow):
             self.session = None
             self.base_url = None
 
+    def timerEvent(self, _event):
+        self.process_updates(from_beginning=self.update_from_beginning)
+        self.update_from_beginning = False
+
     def send_paintcode(self, *, start_point, end_point, color, width):
         if self.session and start_point != end_point:
             start_point = encode_point(start_point)
@@ -159,9 +170,9 @@ class DrawingApp(QMainWindow):
             color = encode_color(color)
             self.session.get(f"{self.base_url}/draw?color={color}&width={width}&start_point={start_point}&end_point={end_point}")
 
-    def timerEvent(self, _event):
+    def process_updates(self, from_beginning=False):
         if self.session:
-            resp = self.session.get(f"{self.base_url}/updates")
+            resp = self.session.get(f"{self.base_url}/updates{'?from_beginning=1' if from_beginning else ''}")
             paint_codes = resp.json()
             if not paint_codes:
                 return
@@ -220,7 +231,10 @@ class PaintRequestHandler(BaseHTTPRequestHandler):
         elif url.path == "/updates":
             self.respond(
                 200,
-                self.server.get_updates(client=self.client_address),
+                self.server.get_updates(
+                    client=self.client_address,
+                    from_beginning="from_beginning" in query,
+                ),
             )
         else:
             self.respond(400, f"unknown path: {url.path}")
@@ -268,10 +282,12 @@ class PaintNet(ThreadingMixIn, HTTPServer):
             "start_point": start_point,
             "end_point": end_point,
         })
-        return self.get_updates(client)
+        return self.get_updates(client, from_beginning=False)
 
-    def get_updates(self, client):
+    def get_updates(self, client, from_beginning):
         len_painting = len(self.painting)
+        if from_beginning:
+            self.client_states.pop(client, None)
         start = self.client_states.get(client, 0)
         self.client_states[client] = len_painting
         return json.dumps(self.painting[start:])
