@@ -6,7 +6,7 @@ Distributed Paint Program
 
 Missing features (in order of perceived relevance):
 - [✓] concurrent clients (blocked by single-threaded HTTPServer)
-- [ ] fix re-draw issue on resize
+- [✓] fix re-draw issue on resize
 - [ ] some form of authentication
 - [ ] saving the image (other than screenshot, that is)
 - [ ] show other people's cursors
@@ -17,6 +17,7 @@ Missing features (in order of perceived relevance):
 
     mkvirtualenv -p python3 pydispaint
     pip install -r requirements.txt
+    python pydispaint.py --help
 
 To start the server, run:
 

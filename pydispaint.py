@@ -1,5 +1,6 @@
 # pylint: disable=invalid-name,no-name-in-module,import-error
 import json
+import logging  # for setting requests log level
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -22,6 +23,8 @@ COLORS = [
     ("green", QColor(0, 255, 0)),
     ("blue", QColor(0, 0, 255)),
 ]
+COLOR_NAMES = [cname for cname, _qcolor in COLORS]
+
 
 
 # server conventions
@@ -107,7 +110,7 @@ class Canvas(QWidget):
         painter.drawImage(0, 0, self.image)
         self.image = new_image
         super().resizeEvent(event)
-        self.app.update_from_beginning = True
+        self.app.update_from_beginning = True  # next timer redraws all
 
     def draw_line(self, *, start_point, end_point, color, width):
         if start_point == end_point:
@@ -185,6 +188,7 @@ class DrawingApp(QMainWindow):
                     width=pc["width"],
                 )
             self.canvas.update()
+            logger.info(f"painted {len(paint_codes)} events")
 
 
 class PaintRequestHandler(BaseHTTPRequestHandler):
@@ -193,6 +197,9 @@ class PaintRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server):
         self.protocol_version = "HTTP/1.1"  # needed for keep-alive
         super().__init__(request, client_address, server)
+
+    def log_request(self, code="-", size="-"):
+        logger.info(f"{self.client_address[0]}:{self.client_address[1]} \"{self.requestline}\" {code} {size}")
 
     def respond(self, http_status, content):
         content = content.encode()
@@ -237,6 +244,7 @@ class PaintRequestHandler(BaseHTTPRequestHandler):
                 ),
             )
         else:
+            logger.warning(f"invalid request: {self.path} ({url})")
             self.respond(400, f"unknown path: {url.path}")
 
 
@@ -275,7 +283,7 @@ class PaintNet(ThreadingMixIn, HTTPServer):
         return json.dumps(self.painting)
 
     def draw(self, client, *, color, width, start_point, end_point):
-        logger.info(f"draw {start_point} -> {end_point} (client: {client})")
+        logger.debug(f"draw {start_point} -> {end_point} (client: {client})")
         self.painting.append({
             "color": color,
             "width": int(width),
@@ -298,24 +306,39 @@ class PaintNet(ThreadingMixIn, HTTPServer):
         return 0
 
 
-@click.group()
-def cli():
-    ...
+@click.group(context_settings={"show_default": True})
+@click.option("-v", is_flag=True, help="verbose output")
+@click.option("-vv", is_flag=True, help="very verbose output")
+def cli(v, vv):
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
+    fmt = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> <level>{level:5} {message}</level>"
+    logger.remove()
+    if vv:
+        logger.add(sys.stderr, colorize=True, format=fmt, level="DEBUG")
+    elif v:
+        logger.add(sys.stderr, colorize=True, format=fmt, level="INFO")
+    else:
+        logger.add(sys.stderr, colorize=True, format=fmt, level="WARNING")
 
 
-@cli.command("server")
+@cli.command("server", context_settings={"show_default": True})
 @click.option("--port", type=int, default=8088)
 def server_command(port):
+    """ Run dispaint server on given --port.
+    """
     app = PaintNet(server="", port=port)
     sys.exit(app.exec_())
 
 
-@cli.command("paint")
-@click.option("--server", default="localhost")
-@click.option("--port", type=int, default=8088)
-@click.option("--color", type=click.Choice([cname for cname, _qcolor in COLORS]))
+@cli.command("paint", context_settings={"show_default": True})
+@click.option("--server", default="localhost", help="dispaint server (host)")
+@click.option("--port", type=int, default=8088, help="dispaint server (port)")
+@click.option("--color", type=click.Choice(COLOR_NAMES), default="black")
 @click.option("--interval", type=int, default=50, help="poll interval in ms")
 def paint_command(server, port, interval, color):
+    """ Let's paint some stuff.
+    """
     for cname, qcolor in COLORS:
         if color == cname:
             color = qcolor
