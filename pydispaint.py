@@ -144,7 +144,7 @@ class DrawingApp(QMainWindow):
         canvas to send drawing instructions over the network, as well
         as send network updates to the canvas.
     """
-    def __init__(self, *, server, port, update_interval, color):  # pylint: disable=redefined-outer-name
+    def __init__(self, *, server, port, update_interval, color):
         super().__init__()
         self.update_from_beginning = False
         self.setWindowTitle("Drawing App")
@@ -190,7 +190,7 @@ class DrawingApp(QMainWindow):
 class PaintRequestHandler(BaseHTTPRequestHandler):
     """ Dispatcher for the Paint Server.
     """
-    def __init__(self, request, client_address, server):  # pylint: disable=redefined-outer-name
+    def __init__(self, request, client_address, server):
         self.protocol_version = "HTTP/1.1"  # needed for keep-alive
         super().__init__(request, client_address, server)
 
@@ -244,7 +244,7 @@ class PaintNet(ThreadingMixIn, HTTPServer):
     """ Paint Server. Manages image paint events and distributes updates
         to different clients.
     """
-    def __init__(self, *, server, port):  # pylint: disable=redefined-outer-name
+    def __init__(self, *, server, port):
         super().__init__((server, port), PaintRequestHandler)
         self.server = server
         self.port = port
@@ -305,7 +305,7 @@ def cli():
 
 @cli.command("server")
 @click.option("--port", type=int, default=8088)
-def server(port):
+def server_command(port):
     app = PaintNet(server="", port=port)
     sys.exit(app.exec_())
 
@@ -315,7 +315,7 @@ def server(port):
 @click.option("--port", type=int, default=8088)
 @click.option("--color", type=click.Choice([cname for cname, _qcolor in COLORS]))
 @click.option("--interval", type=int, default=50, help="poll interval in ms")
-def paint(server, port, interval, color):  # pylint: disable=redefined-outer-name
+def paint_command(server, port, interval, color):
     for cname, qcolor in COLORS:
         if color == cname:
             color = qcolor
