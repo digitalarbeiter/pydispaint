@@ -180,6 +180,12 @@ class DrawingApp(QMainWindow):
         new_action = QAction("Clear whiteboard", self)
         new_action.triggered.connect(self.clear)
         file_menu.addAction(new_action)
+        export_action = QAction("Export server to file", self)
+        export_action.triggered.connect(self.export)
+        file_menu.addAction(export_action)
+        import_action = QAction("Import file to server", self)
+        import_action.triggered.connect(self.import_)
+        file_menu.addAction(import_action)
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
@@ -196,13 +202,50 @@ class DrawingApp(QMainWindow):
         self.canvas.image.save(self.filename)
 
     def save_as(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save Image", "", "PNG(*.png);;JPEG(*.jpg *.jpeg);;All Files(*.*) ")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Image",
+            "",
+            "PNG(*.png);;JPEG(*.jpg *.jpeg);;All Files(*.*) ",
+        )
         if file_path == "":
             return
         self.filename = file_path
         self.save()
         self.setWindowTitle(f"Distributed Paint - {self.filename}")
         self.save_action.setEnabled(True)
+
+    def export(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Distributed Painting",
+            "",
+            "JSON(*.json);;All Files(*.*) ",
+        )
+        if file_path == "":
+            return
+        resp = self.session.get(f"{self.base_url}/updates?from_beginning=1")
+        with open(file_path, "w") as out:
+            for pc in resp.json():
+                out.write(json.dumps(pc, sort_keys=True) + "\n")
+        self.process_updates(from_beginning=True)
+
+    def import_(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Distributed Painting",
+            "",
+            "JSON(*.json);;All Files(*.*) ",
+        )
+        if file_path == "":
+            return
+        with open(file_path) as inp:
+            self.clear()
+            for line in inp:
+                pc = json.loads(line)
+                self.session.get(
+                    f"{self.base_url}/draw?color={pc['color']}&width={pc['width']}&start_point={pc['start_point']}&end_point={pc['end_point']}",
+                )
 
     def clear(self):
         logger.debug("clearing whiteboard")
