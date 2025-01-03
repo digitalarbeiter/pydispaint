@@ -9,7 +9,8 @@ Missing features (in order of perceived relevance):
 - [x] fix re-draw issue on resize
 - [x] some form of authentication
 - [x] rejected: played around with SSL; certs are too much of a hassle
-- [ ] saving the image (other than screenshot, that is)
+- [x] saving the image (other than screenshot, that is)
+- [ ] export/import server state (so we can continue a paining together)
 - [ ] show other people's cursors
 - [ ] packaging and distribution
 

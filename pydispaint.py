@@ -13,7 +13,7 @@ import click
 import requests
 from loguru import logger
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QMessageBox, QAction
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QMessageBox, QAction, QFileDialog
 from PyQt5.QtGui import QPainter, QPen, QImage, QColor, QCursor, QPixmap, QPolygon
 from PyQt5.QtCore import Qt, QPoint
 
@@ -154,8 +154,9 @@ class DrawingApp(QMainWindow):
         super().__init__()
         self.passphrase = passphrase
         self.update_from_beginning = False
-        self.setWindowTitle("Drawing App")
+        self.setWindowTitle("Distributed Paint")
         self.setGeometry(100, 100, 800, 600)
+        self.filename = None
         self.canvas = Canvas(self, color)
         self.setCentralWidget(self.canvas)
         if server and port:
@@ -169,6 +170,13 @@ class DrawingApp(QMainWindow):
 
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("File")
+        self.save_action = QAction("Save", self)
+        self.save_action.triggered.connect(self.save)
+        self.save_action.setDisabled(True)
+        file_menu.addAction(self.save_action)
+        save_as_action = QAction("Save as", self)
+        save_as_action.triggered.connect(self.save_as)
+        file_menu.addAction(save_as_action)
         new_action = QAction("Clear whiteboard", self)
         new_action.triggered.connect(self.clear)
         file_menu.addAction(new_action)
@@ -184,12 +192,27 @@ class DrawingApp(QMainWindow):
         self.process_updates(from_beginning=self.update_from_beginning)
         self.update_from_beginning = False
 
+    def save(self):
+        self.canvas.image.save(self.filename)
+
+    def save_as(self):
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Image", "", "PNG(*.png);;JPEG(*.jpg *.jpeg);;All Files(*.*) ")
+        if file_path == "":
+            return
+        self.filename = file_path
+        self.save()
+        self.setWindowTitle(f"Distributed Paint - {self.filename}")
+        self.save_action.setEnabled(True)
+
     def clear(self):
         logger.debug("clearing whiteboard")
         self.session.get(f"{self.base_url}/new")
         self.canvas = Canvas(self, self.canvas.color)  # re-use old color
         self.setCentralWidget(self.canvas)
         self.update_from_beginning = True
+        self.filename = None
+        self.setWindowTitle("Distributed Paint")
+        self.save_action.setDisabled(True)
 
     def show_about_dialog(self):
         QMessageBox.information(
