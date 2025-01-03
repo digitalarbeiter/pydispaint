@@ -17,6 +17,7 @@ Missing features (in order of perceived relevance):
 
 # Installation and Start
 
+    apt install wbritish-large  # for passphrases
     mkvirtualenv -p python3 pydispaint
     pip install -r requirements.txt
     python pydispaint.py --help
