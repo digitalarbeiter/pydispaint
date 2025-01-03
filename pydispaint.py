@@ -1,8 +1,11 @@
 # pylint: disable=invalid-name,no-name-in-module,import-error
 import json
 import logging  # for setting requests log level
+import random
+import socket
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.cookies import SimpleCookie, CookieError
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
 
@@ -10,7 +13,7 @@ import click
 import requests
 from loguru import logger
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QMessageBox, QAction
 from PyQt5.QtGui import QPainter, QPen, QImage, QColor, QCursor, QPixmap, QPolygon
 from PyQt5.QtCore import Qt, QPoint
 
@@ -147,8 +150,9 @@ class DrawingApp(QMainWindow):
         canvas to send drawing instructions over the network, as well
         as send network updates to the canvas.
     """
-    def __init__(self, *, server, port, update_interval, color):
+    def __init__(self, *, server, port, passphrase, update_interval, color):
         super().__init__()
+        self.passphrase = passphrase
         self.update_from_beginning = False
         self.setWindowTitle("Drawing App")
         self.setGeometry(100, 100, 800, 600)
@@ -156,15 +160,43 @@ class DrawingApp(QMainWindow):
         self.setCentralWidget(self.canvas)
         if server and port:
             self.session = requests.Session()
+            self.session.cookies.set("passphrase", self.passphrase)
             self.base_url = f"http://{server}:{port}"
             self.startTimer(update_interval)
         else:
             self.session = None
             self.base_url = None
 
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("File")
+        new_action = QAction("Clear whiteboard", self)
+        new_action.triggered.connect(self.clear)
+        file_menu.addAction(new_action)
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        help_menu = menu_bar.addMenu("Help")
+        about_action = QAction("About", self)
+        about_action.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(about_action)
+
     def timerEvent(self, _event):
         self.process_updates(from_beginning=self.update_from_beginning)
         self.update_from_beginning = False
+
+    def clear(self):
+        logger.debug("clearing whiteboard")
+        self.session.get(f"{self.base_url}/new")
+        self.canvas = Canvas(self, self.canvas.color)  # re-use old color
+        self.setCentralWidget(self.canvas)
+        self.update_from_beginning = True
+
+    def show_about_dialog(self):
+        QMessageBox.information(
+            self,
+            "About",
+            f"Distributed Painting Program.\nPassphrase: {self.passphrase}\nhttps://github.com/digitalarbeiter/pydispaint",
+        )
 
     def send_paintcode(self, *, start_point, end_point, color, width):
         if self.session and start_point != end_point:
@@ -214,7 +246,22 @@ class PaintRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         query = parse_qs(url.query, keep_blank_values=True)
-        if url.path == "/status":
+        try:
+            cookies = SimpleCookie(self.headers.get("Cookie"))
+            cookies["passphrase"].value  # pylint: disable=pointless-statement
+        except CookieError:
+            self.respond(
+                401,
+                json.dumps({"error": "bad cookie, what is wrong with you!"}),
+            )
+            return
+        if cookies["passphrase"].value != self.server.passphrase:
+            logger.error(f"wrong passphrase in cookies: {cookies['passphrase'].value}")
+            self.respond(
+                401,
+                json.dumps({"error": "not authorized"}),
+            )
+        elif url.path == "/status":
             self.respond(
                 200,
                 self.server.status(),
@@ -248,6 +295,38 @@ class PaintRequestHandler(BaseHTTPRequestHandler):
             self.respond(400, f"unknown path: {url.path}")
 
 
+# need debian package wbritish-large
+try:
+    WORDLIST = [
+        word.strip()
+        for word in open("/usr/share/dict/british-english-large")
+        if "'" not in word and word[0].islower() and word.isascii()
+    ]
+except FileNotFoundError:
+    # just a selection of 99 random words
+    WORDLIST = [
+        "abstractions", "allspice", "anisometropias", "associative", "banderilla",
+        "brainteasers", "breaststrokes", "broadbills", "brooders", "cageling",
+        "captives", "carven", "cellulosic", "chapels", "cheerless", "chemosmosis",
+        "classmates", "clock", "corollary", "corrupting", "cucurbits", "culpably",
+        "deciles", "declaratory", "deerhounds", "digression", "diminishes",
+        "ectomere", "educe", "elegance", "eloign", "encompassment", "engender",
+        "ensheathe", "erosion", "eurhythmics", "expiry", "extirpator", "eyebrow",
+        "fourth", "fractiously", "gourmet", "graben", "grips", "hardships",
+        "headachy", "heterochromosome", "hydride", "immemorially", "injuriousness",
+        "insectivore", "laconically", "latte", "libidinal", "limitable",
+        "logicians", "longshoremen", "lounges", "masterships", "nonjuror",
+        "nystatins", "obstructionism", "onerousness", "outproduce", "overprotect",
+        "parsimoniousnesses", "physiognomic", "pikestaff", "pituri", "pouncer",
+        "prebendary", "pressies", "proficient", "psychotropic", "pudgy",
+        "pyrexias", "questioned", "reefers", "residues", "reticently", "rotunda",
+        "shikari", "signalisation", "speechmakers", "spelled", "starflower",
+        "steamily", "sucks", "surplusages", "tinge", "transects", "uncaught",
+        "underscoring", "unsuspecting", "versify", "voting", "weasels",
+        "whichever", "wordiest",
+    ]
+
+
 class PaintNet(ThreadingMixIn, HTTPServer):
     """ Paint Server. Manages image paint events and distributes updates
         to different clients.
@@ -258,6 +337,7 @@ class PaintNet(ThreadingMixIn, HTTPServer):
         self.port = port
         self.painting = []
         self.client_states = {}
+        self.passphrase = "-".join(random.choices(WORDLIST, k=3))
 
     def status(self):
         len_painting = len(self.painting)
@@ -301,6 +381,7 @@ class PaintNet(ThreadingMixIn, HTTPServer):
         return json.dumps(self.painting[start:])
 
     def exec_(self):
+        logger.warning(f"passphrase: {self.passphrase}")
         logger.info("serving forever...")
         self.serve_forever()
         return 0
@@ -327,16 +408,17 @@ def cli(v, vv):
 def server_command(port):
     """ Run dispaint server on given --port.
     """
-    app = PaintNet(server="", port=port)
+    app = PaintNet(server=socket.getfqdn(), port=port)
     sys.exit(app.exec_())
 
 
 @cli.command("paint", context_settings={"show_default": True})
 @click.option("--server", default="localhost", help="dispaint server (host)")
 @click.option("--port", type=int, default=8088, help="dispaint server (port)")
+@click.option("--passphrase", required=True, help="server passphrase")
 @click.option("--color", type=click.Choice(COLOR_NAMES), default="black")
 @click.option("--interval", type=int, default=50, help="poll interval in ms")
-def paint_command(server, port, interval, color):
+def paint_command(server, port, passphrase, interval, color):
     """ Let's paint some stuff.
     """
     for cname, qcolor in COLORS:
@@ -349,6 +431,7 @@ def paint_command(server, port, interval, color):
     window = DrawingApp(
         server=server,
         port=port,
+        passphrase=passphrase,
         update_interval=interval,
         color=color,
     )
