@@ -11,6 +11,8 @@ Missing features (in order of perceived relevance):
 - [x] rejected: played around with SSL; certs are too much of a hassle
 - [x] saving the image (other than screenshot, that is)
 - [x] export/import server state (so we can continue a paining together)
+- [x] delete a.k.a. the wide white marker
+- [x] brush width selectable
 - [ ] show other people's cursors
 - [ ] packaging and distribution
 

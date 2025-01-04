@@ -4,6 +4,7 @@ import logging  # for setting requests log level
 import random
 import socket
 import sys
+from functools import partial
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie, CookieError
 from socketserver import ThreadingMixIn
@@ -25,6 +26,7 @@ COLORS = [
     ("red", QColor(255, 0, 0)),
     ("green", QColor(0, 255, 0)),
     ("blue", QColor(0, 0, 255)),
+    ("white", QColor(255, 255, 255)),
 ]
 COLOR_NAMES = [cname for cname, _qcolor in COLORS]
 
@@ -58,6 +60,7 @@ class Canvas(QWidget):
         super().__init__()
         self.app = app
         self.color = color
+        self.width = 3
         self.setAttribute(Qt.WA_StaticContents)
         self.drawing = False
         self.last_point = QPoint()
@@ -91,14 +94,14 @@ class Canvas(QWidget):
                 start_point=self.last_point,
                 end_point=event.pos(),
                 color=self.color,
-                width=3,
+                width=self.width,
             )
             self.update()
             self.app.send_paintcode(
                 start_point=self.last_point,
                 end_point=event.pos(),
                 color=self.color,
-                width=3,
+                width=self.width,
             )
             self.last_point = event.pos()
 
@@ -130,17 +133,21 @@ class Canvas(QWidget):
         painter = QPainter(pixmap)
         painter.setPen(Qt.black)
         painter.setBrush(self.color)
-        painter.drawRect(10, 10, 8, 20)  # Rectangle for the pen body
+        painter.drawRect(10, 15, 8, 30)  # Rectangle for the pen body
         painter.setBrush(self.color)
         painter.drawPolygon(
             QPolygon([
-                QPoint(10, 10),  # Top-left corner of the pen body
-                QPoint(18, 10),  # Top-right corner of the pen body
-                QPoint(14, 0)    # Tip of the pen
+                QPoint(10, 15),  # Top-left corner of the pen body
+                QPoint(18, 15),  # Top-right corner of the pen body
+                QPoint(14, 5)    # Tip of the pen
             ])
         )
+        painter.setPen(
+            QPen(Qt.black, self.width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        )
+        painter.drawPoint(14, 5)
         painter.end()
-        cursor = QCursor(pixmap, 14, 0)  # Hot spot at the tip of the pen
+        cursor = QCursor(pixmap, 14, 5)  # Hot spot at the tip of the pen
         self.setCursor(cursor)
 
 
@@ -149,6 +156,7 @@ class DrawingApp(QMainWindow):
         behalf of the canvas; for this it will be commanded by the
         canvas to send drawing instructions over the network, as well
         as send network updates to the canvas.
+        It also handles all the menu/interactions stuff.
     """
     def __init__(self, *, server, port, passphrase, update_interval, color):
         super().__init__()
@@ -169,6 +177,11 @@ class DrawingApp(QMainWindow):
             self.base_url = None
 
         menu_bar = self.menuBar()
+        self.add_file_menu(menu_bar)
+        self.add_brush_menus(menu_bar)
+        self.add_help_menu(menu_bar)
+
+    def add_file_menu(self, menu_bar):
         file_menu = menu_bar.addMenu("File")
         self.save_action = QAction("Save", self)
         self.save_action.triggered.connect(self.save)
@@ -189,6 +202,20 @@ class DrawingApp(QMainWindow):
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+
+    def add_brush_menus(self, menu_bar):
+        color_menu = menu_bar.addMenu("Color")
+        for color, qcolor in COLORS:
+            action = QAction(color, self)
+            action.triggered.connect(partial(self.set_color, qcolor))
+            color_menu.addAction(action)
+        width_menu = menu_bar.addMenu("Width")
+        for width in [1, 3, 5, 7, 9, 30]:
+            action = QAction(f"{width} px", self)
+            action.triggered.connect(partial(self.set_width, width))
+            width_menu.addAction(action)
+
+    def add_help_menu(self, menu_bar):
         help_menu = menu_bar.addMenu("Help")
         about_action = QAction("About", self)
         about_action.triggered.connect(self.show_about_dialog)
@@ -197,6 +224,14 @@ class DrawingApp(QMainWindow):
     def timerEvent(self, _event):
         self.process_updates(from_beginning=self.update_from_beginning)
         self.update_from_beginning = False
+
+    def set_color(self, qcolor):
+        self.canvas.color = qcolor
+        self.canvas.set_pen_cursor()
+
+    def set_width(self, width):
+        self.canvas.width = width
+        self.canvas.set_pen_cursor()
 
     def save(self):
         self.canvas.image.save(self.filename)
