@@ -119,8 +119,6 @@ class Canvas(QWidget):
         self.app.update_from_beginning = True  # next timer redraws all
 
     def draw_line(self, *, start_point, end_point, color, width):
-        if start_point == end_point:
-            return
         logger.debug(f"draw line {start_point.x()},{start_point.y()} to {end_point.x()},{end_point.y()} in #{hex(color.rgb())[4:]} {width}pt.")
         painter = QPainter(self.image)
         pen = QPen(color, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
